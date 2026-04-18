@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "hackathon2026-shopwave"
+version = "0.1.0"
+description = "Autonomous Support Resolution Agent for ShopWave"
+authors = ["Hackathon Team <team@example.com>"]
+readme = "README.md"
+packages = [{ include = "agent", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+langchain = "^0.3"
+langchain-core = "^0.3"
+langchain-google-genai = "^2.0"
+langgraph = "^0.2"
+langgraph-checkpoint-postgres = "^2.0"
+langsmith = "^0.2"
+fastmcp = "^2.0"
+chromadb = "^0.6"
+sentence-transformers = "^3.0"
+pydantic = "^2.7"
+pydantic-settings = "^2.0"
+structlog = "^24.0"
+psycopg = {extras = ["binary", "pool"], version = "^3.2"}
+asyncpg = "^0.30"
+python-dotenv = "^1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.24"
+ruff = "^0.7"
+mypy = "^1.8"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+

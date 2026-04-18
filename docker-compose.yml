@@ -1,0 +1,66 @@
+services:
+  postgres:
+    container_name: hackathon_ksolves-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: shopwave_agent
+      POSTGRES_USER: shopwave
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopwave -d shopwave_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  agent:
+    image: hackathon_ksolves-agent
+    container_name: hackathon_ksolves-agent
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGSMITH_TRACING_V2=${LANGSMITH_TRACING_V2:-false}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-shopwave-agent}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=shopwave_agent
+      - POSTGRES_USER=shopwave
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - CHROMA_PERSIST_DIR=/app/chroma_db
+      - CHROMA_COLLECTION_NAME=${CHROMA_COLLECTION_NAME:-shopwave_kb}
+      - LLM_MODEL=${LLM_MODEL:-models/gemini-2.5-flash}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-2048}
+      - AGENT_MAX_ITERATIONS=${AGENT_MAX_ITERATIONS:-15}
+      - AGENT_CONFIDENCE_THRESHOLD=${AGENT_CONFIDENCE_THRESHOLD:-0.6}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - TOOL_FAILURE_RATE=${TOOL_FAILURE_RATE:-0.15}
+      - TOOL_MAX_RETRIES=${TOOL_MAX_RETRIES:-3}
+      - TOOL_RETRY_DELAYS=${TOOL_RETRY_DELAYS:-1.0,2.0,4.0}
+      - AGENT_CONCURRENCY_LIMIT=${AGENT_CONCURRENCY_LIMIT:-5}
+      - AGENT_MIN_TOOL_CALLS=${AGENT_MIN_TOOL_CALLS:-3}
+      - POLICY_REFERENCE_DATE=${POLICY_REFERENCE_DATE:-2024-03-15}
+      - KB_TOP_K=${KB_TOP_K:-3}
+      - REFUND_ESTIMATED_DAYS=${REFUND_ESTIMATED_DAYS:-7}
+      - ESCALATION_ASSIGNED_TO=${ESCALATION_ASSIGNED_TO:-human_support_queue}
+      - DATA_DIR=/app/data
+      - AUDIT_LOG_PATH=/app/output/audit_log.json
+    volumes:
+      - chroma_data:/app/chroma_db
+      - ./output:/app/output
+    command: python -m agent.main
+
+volumes:
+  postgres_data:
+  chroma_data:
+
