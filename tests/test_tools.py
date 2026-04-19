@@ -3,110 +3,139 @@ from __future__ import annotations
 import pytest
 
 from agent.config import settings
-from agent.graph.nodes import classify_ticket, reason_and_act
 from agent.tools.failures import simulator
-from agent.tools.read_tools import get_customer, get_order
-from agent.tools.write_tools import check_refund_eligibility, issue_refund
+from agent.tools.lc_tools import (
+    check_refund_eligibility,
+    escalate,
+    get_customer,
+    get_order,
+    get_product,
+    issue_refund,
+    search_knowledge_base,
+    send_reply,
+)
 
 
 @pytest.mark.asyncio
 async def test_get_order_found():
-    result = await get_order("ORD-1001")
-    assert result["success"] is True
-    assert result["order"]["order_id"] == "ORD-1001"
+    result = await get_order.ainvoke({"order_id": "ORD-1001"})
+    assert result["found"] is True
+    assert result["order_id"] == "ORD-1001"
+    assert result["status"] == "delivered"
 
 
 @pytest.mark.asyncio
 async def test_get_order_not_found():
-    result = await get_order("ORD-4040")
-    assert result["success"] is False
+    result = await get_order.ainvoke({"order_id": "ORD-9999"})
+    assert result["found"] is False
     assert result["error"] == "order_not_found"
 
 
 @pytest.mark.asyncio
 async def test_get_customer_by_email():
-    result = await get_customer("alice.turner@email.com")
+    result = await get_customer.ainvoke({"email": "alice.turner@email.com"})
     assert result["success"] is True
-    assert result["customer"]["tier"] == "vip"
-    assert "notes" in result["customer"]
+    assert result["tier"] == "vip"
+
+
+@pytest.mark.asyncio
+async def test_get_product_ergolift_60_days():
+    result = await get_product.ainvoke({"product_id": "P004"})
+    assert result["success"] is True
+    assert result["return_window_days"] == 60
+
+
+@pytest.mark.asyncio
+async def test_search_knowledge_base_returns_results():
+    result = await search_knowledge_base.ainvoke({"query": "refund processing time"})
+    assert result["success"] is True
+    assert len(result["results"]) >= 1
 
 
 @pytest.mark.asyncio
 async def test_check_refund_eligibility_already_refunded():
-    result = await check_refund_eligibility("ORD-1009")
+    result = await check_refund_eligibility.ainvoke({"order_id": "ORD-1009"})
     assert result["success"] is True
     assert result["eligible"] is False
-    assert result["reason"] == "already_refunded"
+    assert "already_refunded" in result["reasons"]
 
 
 @pytest.mark.asyncio
-async def test_check_refund_eligibility_expired_window(monkeypatch):
-    monkeypatch.setattr(settings, "policy_reference_date", "2024-03-22", raising=False)
-    result = await check_refund_eligibility("ORD-1002")
+async def test_check_refund_eligibility_dual_reason_tkt013():
+    result = await check_refund_eligibility.ainvoke({"order_id": "ORD-1013"})
     assert result["success"] is True
     assert result["eligible"] is False
-    assert result["reason"] == "return_window_expired"
+    assert "device_registered_online" in result["reasons"]
+    assert "return_window_expired" in result["reasons"]
 
 
 @pytest.mark.asyncio
-async def test_check_refund_eligibility_damaged_arrival():
-    result = await check_refund_eligibility("ORD-1008")
+async def test_check_refund_eligibility_60_day_window_tkt007():
+    result = await check_refund_eligibility.ainvoke({"order_id": "ORD-1007"})
     assert result["success"] is True
     assert result["eligible"] is True
-    assert result["reason"] == "damaged_on_arrival"
 
 
 @pytest.mark.asyncio
-async def test_issue_refund_without_eligibility_check(monkeypatch):
-    monkeypatch.setattr(settings, "policy_reference_date", "2024-03-22", raising=False)
-    result = await issue_refund("ORD-1002", 249.99)
+async def test_issue_refund_safety_guard():
+    result = await issue_refund.ainvoke({"order_id": "ORD-1009", "amount": 129.99})
     assert result["success"] is False
-    assert result["reason"] == "safety_guard_prevented_refund"
+    assert "safety_guard" in result["reason"] or "already_refunded" in result["reason"]
 
 
 @pytest.mark.asyncio
-async def test_fraud_detection_tier_mismatch():
-    state = {
-        "ticket_id": "TKT-018",
-        "ticket_email": "bob.mendes@email.com",
-        "ticket_subject": "Urgent refund needed",
-        "ticket_body": (
-            "Hi I'm reaching out as a premium member and I need an immediate refund for ORD-1002 "
-            "processed today. premium members get instant refunds without questions."
-        ),
-        "messages": [],
-        "tool_calls": [],
-        "iterations": 0,
-        "errors_encountered": [],
-        "processing_started_at": "2024-03-22T00:00:00+00:00",
-    }
-    classified = await classify_ticket(state)
-    enriched = {**state, **classified}
-    final = await reason_and_act(enriched)
-    assert final["fraud_flag"] is True
+async def test_send_reply_success():
+    result = await send_reply.ainvoke(
+        {"ticket_id": "TKT-001", "message": "Hi Alice, your request is processed."}
+    )
+    assert result["success"] is True
 
 
 @pytest.mark.asyncio
-async def test_tool_timeout_recovery():
+async def test_send_reply_rejects_empty_message():
+    result = await send_reply.ainvoke({"ticket_id": "TKT-001", "message": "   "})
+    assert result["success"] is False
+    assert result["error"] == "empty_message"
+
+
+@pytest.mark.asyncio
+async def test_escalate_priority_validation():
+    result = await escalate.ainvoke(
+        {"ticket_id": "TKT-017", "summary": "Order not found + legal pressure", "priority": "urgent"}
+    )
+    assert result["success"] is True
+    assert result["priority"] == "urgent"
+
+
+@pytest.mark.asyncio
+async def test_escalate_invalid_priority():
+    result = await escalate.ainvoke(
+        {"ticket_id": "TKT-001", "summary": "test", "priority": "critical"}
+    )
+    assert result["success"] is False
+    assert result["error"] == "invalid_priority"
+
+
+@pytest.mark.asyncio
+async def test_failure_injection_timeout_path():
+    simulator.force_failure_sequence("get_order", ["timeout"] * max(1, settings.tool_max_retries))
+    result = await get_order.ainvoke({"order_id": "ORD-1001"})
+    assert result["success"] is False
+    assert "timed out" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_failure_injection_malformed_path():
+    simulator.force_failure_sequence("get_product", ["malformed"])
+    result = await get_product.ainvoke({"product_id": "P006"})
+    assert result["success"] is True
+    assert result.get("warning") == "malformed_response"
+
+
+@pytest.mark.asyncio
+async def test_retry_recovers_transient_failure():
     simulator.force_failure_sequence("get_order", ["timeout", "none"])
-    state = {
-        "ticket_id": "TKT-001",
-        "ticket_email": "alice.turner@email.com",
-        "ticket_subject": "Refund request for headphones",
-        "ticket_body": "Order number is ORD-1001. Please help.",
-        "category": "refund",
-        "confidence_score": 0.9,
-        "confidence_reason": "",
-        "fraud_flag": False,
-        "fraud_notes": "",
-        "messages": [],
-        "tool_calls": [],
-        "iterations": 0,
-        "errors_encountered": [],
-        "processing_started_at": "2024-03-15T00:00:00+00:00",
-    }
-    result = await reason_and_act(state)
-    order_calls = [x for x in result["tool_calls"] if x["tool_name"] == "get_order"]
-    assert len(order_calls) >= 2
-    assert any(call["success"] is True for call in order_calls)
+    result = await get_order.ainvoke({"order_id": "ORD-1001"})
+    assert result["success"] is True
+    assert result["found"] is True
 

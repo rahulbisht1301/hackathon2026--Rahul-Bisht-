@@ -1,6 +1,6 @@
 services:
   postgres:
-    container_name: hackathon_ksolves-postgres
+    container_name: hackathon_ksolves-postgres-v2
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: shopwave_agent
@@ -17,8 +17,8 @@ services:
       - "5432:5432"
 
   agent:
-    image: hackathon_ksolves-agent
-    container_name: hackathon_ksolves-agent
+    image: hackathon_ksolves-agent-v2
+    container_name: hackathon_ksolves-agent-v2
     build:
       context: .
       dockerfile: Dockerfile
@@ -55,6 +55,7 @@ services:
       - ESCALATION_ASSIGNED_TO=${ESCALATION_ASSIGNED_TO:-human_support_queue}
       - DATA_DIR=/app/data
       - AUDIT_LOG_PATH=/app/output/audit_log.json
+      - RUN_REPORT_PATH=/app/output/run_report.json
     volumes:
       - chroma_data:/app/chroma_db
       - ./output:/app/output

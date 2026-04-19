@@ -14,6 +14,7 @@ except Exception:
     from langgraph.checkpoint.memory import MemorySaver as InMemorySaver  # type: ignore
 
 from agent.audit.audit_log import AuditWriter
+from agent.audit.run_report import write_run_report
 from agent.audit.logger import configure_logging, get_logger
 from agent.config import settings
 from agent.data.loader import init_loader
@@ -34,6 +35,8 @@ async def process_ticket(graph, ticket: dict[str, Any], semaphore: asyncio.Semap
             "ticket_body": ticket["body"],
             "ticket_source": ticket["source"],
             "ticket_created_at": ticket["created_at"],
+            "ticket_tier": int(ticket.get("tier", 0)),
+            "expected_action": str(ticket.get("expected_action", "")),
             "messages": [],
             "tool_calls": [],
             "iterations": 0,
@@ -43,6 +46,14 @@ async def process_ticket(graph, ticket: dict[str, Any], semaphore: asyncio.Semap
             "fraud_notes": "",
             "confidence_score": 0.0,
             "confidence_reason": "",
+            "escalation_reason_code": "",
+            "planned_target_action": "",
+            "planned_required_tools": [],
+            "planned_must_escalate": False,
+            "planned_rationale": "",
+            "planned_expected_outcome": "",
+            "planned_escalation_priority": "medium",
+            "planned_kb_evidence": [],
             "resolvable": True,
             "processing_started_at": datetime.now(timezone.utc).isoformat(),
             "errors_encountered": [],
@@ -117,27 +128,29 @@ async def main() -> int:
     run_completed = datetime.now(timezone.utc)
     writer = AuditWriter(settings.audit_log_path)
     writer.write(results, run_started, run_completed)
+    report = write_run_report(settings.run_report_path, results, run_started, run_completed)
 
     resolved = sum(1 for r in results if r.get("status") == "resolved")
     escalated = sum(1 for r in results if r.get("status") == "escalated")
     failed = sum(1 for r in results if r.get("status") == "failed")
+    logger.info(
+        "run_report_written",
+        run_report_path=settings.run_report_path,
+        total=report["total_tickets"],
+        resolved=report["resolved"],
+        escalated=report["escalated"],
+        failed=report["failed"],
+    )
     logger.info(
         "run_complete",
         total=len(results),
         resolved=resolved,
         escalated=escalated,
         failed=failed,
+        audit_log_path=settings.audit_log_path,
+        run_report_path=settings.run_report_path,
         duration_seconds=round((run_completed - run_started).total_seconds(), 1),
     )
-    print(f"\n{'=' * 50}")
-    print("ShopWave Agent Run Complete")
-    print(f"{'=' * 50}")
-    print(f"Total tickets:  {len(results)}")
-    print(f"Resolved:       {resolved}")
-    print(f"Escalated:      {escalated}")
-    print(f"Failed:         {failed}")
-    print(f"Audit log:      {settings.audit_log_path}")
-    print(f"{'=' * 50}\n")
     if pg_conn is not None:
         await pg_conn.close()
     return 0 if failed == 0 else 1

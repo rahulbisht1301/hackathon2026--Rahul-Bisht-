@@ -28,6 +28,7 @@ class AuditEntry:
     ticket_id: str
     customer_email: str
     subject: str
+    expected_action: str
     category: str
     urgency: str
     resolvable: bool
@@ -42,6 +43,11 @@ class AuditEntry:
     customer_reply: str
     escalation_summary: str
     escalation_priority: str
+    escalation_reason_code: str
+    planned_target_action: str
+    planned_required_tools: list[str]
+    planned_must_escalate: bool
+    planned_rationale: str
     confidence_score: float
     confidence_reason: str
     processing_started_at: str
@@ -55,6 +61,7 @@ def state_to_audit_entry(state: dict[str, Any]) -> AuditEntry:
         ticket_id=state.get("ticket_id", ""),
         customer_email=state.get("ticket_email", ""),
         subject=state.get("ticket_subject", ""),
+        expected_action=state.get("expected_action", ""),
         category=state.get("category", ""),
         urgency=state.get("urgency", ""),
         resolvable=bool(state.get("resolvable", False)),
@@ -69,6 +76,11 @@ def state_to_audit_entry(state: dict[str, Any]) -> AuditEntry:
         customer_reply=state.get("customer_reply", ""),
         escalation_summary=state.get("escalation_summary", ""),
         escalation_priority=state.get("escalation_priority", ""),
+        escalation_reason_code=state.get("escalation_reason_code", ""),
+        planned_target_action=state.get("planned_target_action", ""),
+        planned_required_tools=state.get("planned_required_tools", []),
+        planned_must_escalate=bool(state.get("planned_must_escalate", False)),
+        planned_rationale=state.get("planned_rationale", ""),
         confidence_score=float(state.get("confidence_score", 0.0)),
         confidence_reason=state.get("confidence_reason", ""),
         processing_started_at=state.get("processing_started_at", ""),

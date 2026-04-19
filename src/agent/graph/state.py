@@ -10,6 +10,8 @@ class TicketState(TypedDict, total=False):
     ticket_body: str
     ticket_source: str
     ticket_created_at: str
+    ticket_tier: int
+    expected_action: str
 
     category: str
     urgency: str
@@ -24,6 +26,14 @@ class TicketState(TypedDict, total=False):
     customer_reply: str
     escalation_summary: str
     escalation_priority: str
+    escalation_reason_code: str
+    planned_target_action: str
+    planned_required_tools: list[str]
+    planned_must_escalate: bool
+    planned_rationale: str
+    planned_expected_outcome: str
+    planned_escalation_priority: str
+    planned_kb_evidence: list[dict[str, Any]]
 
     confidence_score: float
     confidence_reason: str

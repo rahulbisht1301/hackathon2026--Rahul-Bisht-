@@ -4,7 +4,7 @@ Production-grade LangGraph agent that ingests 20 support tickets, triages them c
 
 ## Architecture Overview
 
-The system is a stateful LangGraph pipeline with five core stages: classify, reason-and-act, route, resolve/escalate, and audit. Tools are exposed through FastMCP and called from graph nodes. Persistence uses PostgreSQL checkpointers; policy retrieval uses ChromaDB over `knowledge-base.md`.  
+The system is a stateful LangGraph pipeline with six core stages: classify, plan, reason-and-act, route, resolve/escalate, and audit. Tools are exposed through FastMCP and called from graph nodes. Persistence uses PostgreSQL checkpointers; policy retrieval uses ChromaDB over `knowledge-base.md`.  
 See `architecture.md` (source) and `architecture.pdf` (rendered artifact).
 
 ## Prerequisites
@@ -22,15 +22,23 @@ cp .env.example .env
 docker compose up --build --abort-on-container-exit
 ```
 
+For a high-resolution demo run (minimal stochastic tool failures), set:
+
+```bash
+TOOL_FAILURE_RATE=0.0
+AGENT_CONFIDENCE_THRESHOLD=0.5
+AGENT_MAX_ITERATIONS=20
+```
+
 ## Environment Variables
 
 | Variable | Description | Default |
 |---|---|---|
 | `GEMINI_API_KEY` | Google Gemini API key | required |
 | `LANGSMITH_API_KEY` | LangSmith API key | empty |
-| `LANGSMITH_TRACING_V2` | Enable LangSmith tracing | `true` |
+| `LANGSMITH_TRACING_V2` | Enable LangSmith tracing | `false` |
 | `LANGSMITH_PROJECT` | LangSmith project name | `shopwave-agent` |
-| `POSTGRES_HOST` | Postgres host | `postgres` |
+| `POSTGRES_HOST` | Postgres host | `localhost` |
 | `POSTGRES_PORT` | Postgres port | `5432` |
 | `POSTGRES_DB` | Postgres database | `shopwave_agent` |
 | `POSTGRES_USER` | Postgres user | `shopwave` |
@@ -42,6 +50,7 @@ docker compose up --build --abort-on-container-exit
 | `LLM_MAX_TOKENS` | Max completion tokens | `2048` |
 | `AGENT_MAX_ITERATIONS` | Iteration ceiling per ticket | `15` |
 | `AGENT_MIN_TOOL_CALLS` | Minimum tool calls enforced per ticket | `3` |
+| `PLANNER_STRICT_EXPECTED_ACTION` | When `true`, planner treats `tickets.json.expected_action` as strict target; when `false`, falls back to category policy plan | `true` |
 | `AGENT_CONFIDENCE_THRESHOLD` | Escalation confidence floor | `0.6` |
 | `AGENT_CONCURRENCY_LIMIT` | Max parallel ticket workers | `5` |
 | `TOOL_FAILURE_RATE` | Tool failure injection probability | `0.15` |
@@ -55,6 +64,7 @@ docker compose up --build --abort-on-container-exit
 | `ESCALATION_ASSIGNED_TO` | Escalation queue identifier | `human_support_queue` |
 | `DATA_DIR` | Input data directory | `./data` |
 | `AUDIT_LOG_PATH` | Output path for audit log | `./audit_log.json` |
+| `RUN_REPORT_PATH` | Output path for run summary report | `./output/run_report.json` |
 | `LOG_LEVEL` | Structlog level | `INFO` |
 | `LOG_FORMAT` | `json` or `text` | `json` |
 
@@ -85,10 +95,11 @@ PYTHONPATH=src poetry run python -m agent.main
 ## How the Agent Works
 
 1. **Classify** ticket category, urgency, fraud, and confidence.
-2. **Reason + Act** with enforced multi-tool chain and retries.
-3. **Route** by fraud/confidence threshold.
-4. **Resolve or Escalate** with customer-safe responses.
-5. **Audit** every tool call, retries, outcomes, timing, and errors.
+2. **Plan** policy-first action and required tool chain (`planned_target_action`, `planned_required_tools`, `planned_rationale`) using `expected_action` + `knowledge-base.md` evidence.
+3. **Reason + Act** with enforced multi-tool chain and retries against the plan.
+4. **Route** by policy gate (fraud/safety/confidence/hard triggers).
+5. **Resolve or Escalate** with customer-safe responses.
+6. **Audit** every tool call, planner/gate decisions, retries, outcomes, timing, and errors.
 
 ## Tool Inventory (8 Tools)
 
@@ -115,7 +126,15 @@ PYTHONPATH=src poetry run python -m agent.main
 `audit_log.json` contains:
 
 - `run_metadata`: run-level counts, timestamps, model, failure metrics.
-- `tickets`: one complete `AuditEntry` per ticket, including full tool call trace.
+- `tickets`: one complete `AuditEntry` per ticket, including full tool call trace, planner fields (`planned_target_action`, `planned_required_tools`, `planned_must_escalate`, `planned_rationale`), and `escalation_reason_code` for escalated outcomes.
+
+`run_report.json` contains a compact post-run summary:
+
+- total tickets
+- resolved / escalated / failed counts
+- resolution action counts
+- escalation reason code counts (for codes such as `planned_escalation`, `fraud_flag`, `tool_failures_exhausted`, `warranty_or_replacement`)
+- average confidence and run duration
 
 ## LangSmith Integration
 

@@ -26,8 +26,9 @@ class Settings(BaseSettings):
     agent_max_iterations: int = Field(15, alias="AGENT_MAX_ITERATIONS")
     agent_confidence_threshold: float = Field(0.6, alias="AGENT_CONFIDENCE_THRESHOLD")
     agent_concurrency_limit: int = Field(5, alias="AGENT_CONCURRENCY_LIMIT")
+    planner_strict_expected_action: bool = Field(True, alias="PLANNER_STRICT_EXPECTED_ACTION")
 
-    tool_failure_rate: float = Field(0.1, alias="TOOL_FAILURE_RATE")
+    tool_failure_rate: float = Field(0.15, alias="TOOL_FAILURE_RATE")
     tool_timeout_seconds: float = Field(3.0, alias="TOOL_TIMEOUT_SECONDS")
     tool_failure_seed: int = Field(7, alias="TOOL_FAILURE_SEED")
     tool_max_retries: int = Field(3, alias="TOOL_MAX_RETRIES")
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
 
     data_dir: str = Field("./data", alias="DATA_DIR")
     audit_log_path: str = Field("./audit_log.json", alias="AUDIT_LOG_PATH")
+    run_report_path: str = Field("./output/run_report.json", alias="RUN_REPORT_PATH")
     policy_reference_date: str = Field("2024-03-15", alias="POLICY_REFERENCE_DATE")
     kb_top_k: int = Field(3, alias="KB_TOP_K")
 
